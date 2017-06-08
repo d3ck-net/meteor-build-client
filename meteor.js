@@ -18,7 +18,7 @@ var argPath = process.argv[2],
 var execute = function(command, name) {
     return new Q(function(resolve, reject) {
         spinner.start();
-        
+
         spawn(command[0], command.slice(1), {
             cwd: basePath
         },function(err, stdout, stderr) {
@@ -26,7 +26,7 @@ var execute = function(command, name) {
 
             if (err){
                 console.log(err.message);
-                
+
                 reject(err);
             } else {
                 resolve({
@@ -34,7 +34,7 @@ var execute = function(command, name) {
                     stderr: stderr,
                 });
             }
-        });        
+        });
     });
 };
 
@@ -68,7 +68,7 @@ module.exports = {
                 command.push(program.url);
             }
 
-            return execute(command, 'build the app, are you in your meteor apps folder?');                        
+            return execute(command, 'build the app, are you in your meteor apps folder?');
         });
     },
     move: function(){
@@ -90,7 +90,7 @@ module.exports = {
                 });
             } catch(e) {
                 // do nothing
-            }            
+            }
         });
     },
     addIndexFile: function(program) {
@@ -110,12 +110,12 @@ module.exports = {
             content = content.replace(/{{ *> *head *}}/,head);
 
             // get the css and js files
-            var files = {};
+            var files = {css:[],js:[]};
             _.each(fs.readdirSync(buildPath), function(file){
                 if(/^[a-z0-9]{40}\.css$/.test(file))
-                    files['css'] = file;
+                    files['css'].push(file);
                 if(/^[a-z0-9]{40}\.js$/.test(file))
-                    files['js'] = file;
+                    files['js'].push(file);
             });
 
             // MAKE PATHS ABSOLUTE
@@ -124,29 +124,53 @@ module.exports = {
                 // fix paths in the CSS file
                 if(!_.isEmpty(files['css'])) {
 
-                    var cssFile = fs.readFileSync(path.join(buildPath, files['css']), {encoding: 'utf8'});
-                    cssFile = cssFile.replace(/url\(\'\//g, 'url(\''+ program.path).replace(/url\(\//g, 'url('+ program.path);
-                    fs.unlinkSync(path.join(buildPath, files['css']));
-                    fs.writeFileSync(path.join(buildPath, files['css']), cssFile, {encoding: 'utf8'});
+                    files['css'].forEach(function(css,i){
 
-                    files['css'] = program.path + files['css'];
+
+                        var cssFile = fs.readFileSync(path.join(buildPath, css), {encoding: 'utf8'});
+                        cssFile = cssFile.replace(/url\(\'\//g, 'url(\''+ program.path).replace(/url\(\//g, 'url('+ program.path);
+                        fs.unlinkSync(path.join(buildPath, css));
+                        fs.writeFileSync(path.join(buildPath, css), cssFile, {encoding: 'utf8'});
+
+                        files['css'][i] = program.path + css;
+                    })
                 }
-                files['js'] = program.path + files['js'];
-            } else {
-                if(!_.isEmpty(files['css']))
-                    files['css'] = '/'+ files['css'];
-                files['js'] = '/'+ files['js'];
+                files['js'].forEach(function(path,i){
+                    files['js'][i] = program.path + path;
+                });
+            } else
+            {
+
+                    ['css','js'].forEach(function(type){
+                        if (!_.isEmpty(files[type]))
+                        {
+                        files[type].forEach(function(path,i){
+                            files[type][i] = '/' + path;
+                        })
+                }
+                    });
+
             }
 
 
             // ADD CSS
-            var css = '<link rel="stylesheet" type="text/css" class="__meteor-css__" href="'+ files['css'] +'?meteor_css_resource=true">';
+            var css = [];
+            files['css'].forEach(function(path){
+            css.push('<link rel="stylesheet" type="text/css" class="__meteor-css__" href="'+ path +'?meteor_css_resource=true">');
+            });
+            css = css.join("\n        ");
+
             content = content.replace(/{{ *> *css *}}/, css);
 
             // ADD the SCRIPT files
-            var scripts = '__meteor_runtime_config__'+ "\n"+
-            '        <script type="text/javascript" src="'+ files['js'] +'"></script>'+ "\n";
+            var scripts = [];
+            files['js'].forEach(function(path){
+            scripts.push('__meteor_runtime_config__'+ "\n"+
+                '        <script type="text/javascript" src="'+ path +'"></script>'+ "\n");
 
+            });
+
+            scripts = scripts.join("\n        ");
             // add the meteor runtime config
             settings = {
                 'meteorRelease': starJson.meteorRelease,
@@ -167,7 +191,7 @@ module.exports = {
                 settings.PUBLIC_SETTINGS = settingsJson.public;
 
             scripts = scripts.replace('__meteor_runtime_config__', '<script type="text/javascript">__meteor_runtime_config__ = JSON.parse(decodeURIComponent("'+encodeURIComponent(JSON.stringify(settings))+'"));</script>');
-            
+
             // add Meteor.disconnect() when no server is given
             if(!program.url)
                 scripts += '        <script type="text/javascript">Meteor.disconnect();</script>';
@@ -187,7 +211,7 @@ module.exports = {
                 fs.unlinkSync(path.join(buildPath, 'head.html'));
             } catch (e){
                 console.log("Didn't unlink head.html; doesn't exist.");
-            }            
+            }
         });
     }
 }
